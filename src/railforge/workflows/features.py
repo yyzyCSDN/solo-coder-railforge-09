@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from railforge.cargo.segregation import violations
+from railforge.commercial.capacity_commitment import CommitmentLedger
 from railforge.commercial.contract_capacity import allocate as allocate_capacity
 from railforge.control.recovery import choose as choose_recovery
 from railforge.customs.holds import active
@@ -20,10 +21,11 @@ from railforge.yard.switching import lock_route
 
 
 class RailForgeFeatureService:
-    """Fifteen product workflows, all committed through the common control plane."""
+    """Sixteen product workflows, all committed through the common control plane."""
 
     def __init__(self, control):
         self.control = control
+        self.capacity_commitments = CommitmentLedger()
 
     def coordinate_route(self, operation_id, requests, sections, existing, headway, at):
         def action():
@@ -93,6 +95,11 @@ class RailForgeFeatureService:
     def reserve_capacity(self, operation_id, requests, resources, at):
         return self.control.run(operation_id, "feature.capacity.reserved", operation_id, at,
                                 lambda: allocate_capacity(requests, resources))
+
+    def commit_capacity(self, operation_id, demands, plans, vehicles, expected_version, at):
+        def action():
+            return self.capacity_commitments.commit(expected_version, demands, plans, vehicles)
+        return self.control.run(operation_id, "feature.capacity.committed", operation_id, at, action)
 
     def preclear_customs(self, operation_id, holds, scope, check_at, loads, rules, at):
         def action():
