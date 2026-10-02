@@ -11,6 +11,7 @@ from railforge.billing.demurrage import charge
 from railforge.cargo.segregation import violations
 from railforge.consist.integrity import validate
 from railforge.customs.holds import active
+from railforge.customer.capacity_commitment import CommitmentRegistry
 from railforge.energy.regen import net_energy
 from railforge.eta.event_fusion import fused_delay
 from railforge.events.cursor import CursorConsumer, FeedEvent
@@ -62,10 +63,12 @@ class RailForgeWorkflowControl:
     """Atomic domain -> event -> audit workflow used by every feature surface."""
 
     def __init__(self, stream: EventStream | None = None, trail: Trail | None = None,
-                 store: VersionedStore | None = None):
+                 store: VersionedStore | None = None,
+                 commitments: CommitmentRegistry | None = None):
         self.stream = stream or EventStream()
         self.trail = trail or Trail()
         self.store = store or VersionedStore()
+        self.commitments = commitments or CommitmentRegistry()
         self._receipts: dict[str, OperationReceipt] = {}
         self._consumers: dict[str, CursorConsumer] = {}
 
@@ -187,4 +190,20 @@ class RailForgeWorkflowControl:
     def fuse_eta(self, operation_id, rows, max_lateness, subject, at):
         return self._commit(operation_id, "eta.fused", subject, at,
                             lambda: fused_delay(rows, max_lateness))
+
+    def commit_customer_capacity(self, operation_id, contracts, plans_by_id, vehicles, at,
+                                 expected_versions=None, expected_ledger_version=None):
+        """Merge contract capacity, line plans, vehicle availability and priority
+        into comparable commitment versions, all locked through one atomic commit."""
+        def action():
+            decisions = self.commitments.commit(
+                contracts, plans_by_id, vehicles,
+                expected_versions=expected_versions,
+                expected_ledger_version=expected_ledger_version)
+            return {
+                "ledger_version": self.commitments.ledger_version,
+                "decisions": decisions,
+            }
+        return self._commit(operation_id, "customer.capacity.committed",
+                            CommitmentRegistry.SUBJECT, at, action)
 

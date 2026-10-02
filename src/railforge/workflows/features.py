@@ -20,7 +20,7 @@ from railforge.yard.switching import lock_route
 
 
 class RailForgeFeatureService:
-    """Fifteen product workflows, all committed through the common control plane."""
+    """Product workflows, all committed through the common control plane."""
 
     def __init__(self, control):
         self.control = control
@@ -145,4 +145,14 @@ class RailForgeFeatureService:
             accepted = [consumer.accept(e) for e in events]
             return {"accepted": accepted, "delay": fused_delay(observations, max_lateness)}
         return self.control.run(operation_id, "feature.timeline.reconciled", operation_id, at, action)
+
+    def commit_freight_capacity(self, operation_id, contracts, plans_by_id, vehicles, at,
+                                expected_versions=None, expected_ledger_version=None):
+        """Merge contract capacity, line plans, vehicle availability and priority
+        into comparable commitment versions; reject or downgrade when resources are
+        short; conflicting later versions are rolled back atomically."""
+        return self.control.commit_customer_capacity(
+            operation_id, contracts, plans_by_id, vehicles, at,
+            expected_versions=expected_versions,
+            expected_ledger_version=expected_ledger_version)
 
